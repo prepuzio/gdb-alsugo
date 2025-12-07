@@ -10,18 +10,8 @@ import string
 
 from .treesitter_helper import *
 from .ai import *
-
-def generate_fields(names):
-    yield "NONE", 0
-    for i, name in enumerate(names):
-        yield name, 1 << i
-    yield "ALL", (1 << len(names)) - 1
-
-FIELD = dict(generate_fields([
-    "LINE", 
-    "BODY", 
-    "FUNCTION", 
-    "LOCALS"]))
+from .md_helper import *
+from .enums import PAYLOAD_FIELDS, QUERY_FIELDS, generate_fields
 
 class Frame:
     def __init__(self, frame=None):
@@ -53,7 +43,10 @@ class Frame:
 
     @property
     def funcbody(self):
-        return treesitter_get_function(self.funcname)
+        return treesitter_matches(
+                frame=self._frame,
+                query_field = QUERY_FIELDS["FUNCTION"],
+                ).search(self.funcname)
 
     def _symbols(self):
         for sym in self._frame.block():
@@ -101,30 +94,30 @@ def version_cmd(args, from_tty):
 
 @gdb_register(cmds, ["payload", "json"])
 def payload_cmd(args, from_tty):
-    print(craft_payload(FIELD["ALL"]))
+    print(craft_payload(PAYLOAD_FIELDS["ALL"]))
 
 @gdb_register(cmds, ["spiega"])
 def spiega_cmd(args, from_tty):
-    payload = craft_payload(FIELD["LINE"] | 
-                            FIELD["FUNCTION"] |
-                            FIELD["LOCALS"]
+    payload = craft_payload(PAYLOAD_FIELDS["LINE"] | 
+                            PAYLOAD_FIELDS["FUNCTION"] |
+                            PAYLOAD_FIELDS["BODY"] |
+                            PAYLOAD_FIELDS["LOCALS"]
                             )
-    # TODO prompt settable from a command
-    print(gemini_query("siamo dentro gdb, descrivi la seguente funzione:" + str(payload)))
+    md().print(AiClient()
+          .query("siamo dentro gdb, descrivi la seguente funzione:" + 
+                 str(payload)))
 
-
-
-def craft_payload(fields=FIELD["NONE"]):
+def craft_payload(fields=PAYLOAD_FIELDS["NONE"]):
     payload = {}
     f = Frame()
 
-    if fields & FIELD["LINE"]:
+    if fields & PAYLOAD_FIELDS["LINE"]:
         payload["current_line"] = f.line
-    if fields & FIELD["FUNCTION"]:
+    if fields & PAYLOAD_FIELDS["FUNCTION"]:
         payload["current_function"] = f.funcname
-    if fields & FIELD["BODY"]:
+    if fields & PAYLOAD_FIELDS["BODY"]:
         payload["current_function_body"] = f.funcbody
-    if fields & FIELD["LOCALS"]:
+    if fields & PAYLOAD_FIELDS["LOCALS"]:
         payload["locals"] = f.locals
 
     return payload
