@@ -36,6 +36,14 @@ class Frame:
             return f.readlines()[number]
 
     @property
+    def file(self):
+        return self._frame.find_sal().symtab.fullname()
+
+    @property
+    def lang(self):
+        return self._frame.language()
+
+    @property
     def locals(self):
         return [{ s["print_name"]: s["value"]} 
             for s in self._symbols() 
@@ -47,6 +55,32 @@ class Frame:
                 frame=self._frame,
                 query_field = QUERY_FIELDS["FUNCTION"],
                 ).search(self.funcname)
+
+    @property
+    def backtrace(self):
+        bt = []
+        frame = self._frame
+        while frame:
+            try:
+                fn = frame.function()
+                name = fn.print_name if fn else "??"
+            except:
+                name = "??"
+            bt.append(name)
+            frame = frame.older()
+        return bt
+
+    @property
+    def regs(self):
+        r = {}
+        try:
+            arch = self._frame.architecture()
+            for reg in arch.registers("general"):
+                val = self._frame.read_register(reg)
+                r[reg.name] = str(val)
+        except:
+            pass
+        return r
 
     def _symbols(self):
         for sym in self._frame.block():
@@ -69,10 +103,12 @@ class Frame:
 
 Version = dict(
         plugin_name = "gdb-alsugo",
-        version = "0.08",
+        version = "0.09",
         )
 cmds = dict()
 convs = dict()
+prompts = dict()
+watchers = dict()
 
 def errorprint(msg):
     print(msg, file=sys.stderr)
@@ -107,6 +143,17 @@ def spiega_cmd(args, from_tty):
           .query("siamo dentro gdb, descrivi la seguente funzione:" + 
                  str(payload)))
 
+@gdb_register(cmds, ["chiedi", "ask", "addumann"])
+def _cmd(args, from_tty):
+    query = input("chiedi: ")
+    payload = craft_payload(PAYLOAD_FIELDS["LINE"] | 
+                            PAYLOAD_FIELDS["FUNCTION"] |
+                            PAYLOAD_FIELDS["BODY"] |
+                            PAYLOAD_FIELDS["LOCALS"]
+                            )
+    md().print(AiClient()
+          .query(query + "\n\nContext:\n" + json.dumps(payload, indent=2)))
+
 def craft_payload(fields=PAYLOAD_FIELDS["NONE"]):
     payload = {}
     f = Frame()
@@ -119,5 +166,12 @@ def craft_payload(fields=PAYLOAD_FIELDS["NONE"]):
         payload["current_function_body"] = f.funcbody
     if fields & PAYLOAD_FIELDS["LOCALS"]:
         payload["locals"] = f.locals
+    if fields & PAYLOAD_FIELDS["FILE"]:
+        payload["file"] = f.file
+        payload["lang"] = f.lang
+    if fields & PAYLOAD_FIELDS["BACKTRACE"]:
+        payload["backtrace"] = f.backtrace
+    if fields & PAYLOAD_FIELDS["REGS"]:
+        payload["registers"] = f.regs
 
     return payload

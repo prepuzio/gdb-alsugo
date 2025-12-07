@@ -7,11 +7,15 @@ def generate_fields(names):
 # treesitter query type
 QUERY_FIELDS = dict(generate_fields([
     "VAR", 
-    "FUNCTION"]))
+    "FUNCTION",
+    "CLASS"]))
 
 # payload generation fields
 PAYLOAD_FIELDS = dict(generate_fields([
     "LINE", 
     "BODY", 
     "FUNCTION", 
-    "LOCALS"]))
+    "LOCALS",
+    "FILE",
+    "BACKTRACE",
+    "REGS"]))

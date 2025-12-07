@@ -19,30 +19,30 @@ import pathlib
 
 from .enums import QUERY_FIELDS, generate_fields
 
+# same query works for both c and c++
 FUNCTION_QUERY = b"""
-    (
-    function_definition
-        declarator: (function_declarator
-            declarator: (identifier) @func_name
-        )
-        body: (compound_statement) @func_body
-    )
+(function_definition
+  declarator: (function_declarator
+    declarator: (_) @func_name)
+  body: (compound_statement) @func_body)
 """
+
+CLASS_QUERY_CPP = b"""
+(class_specifier
+  name: (type_identifier) @class_name
+  body: (field_declaration_list) @class_body)
+(struct_specifier
+  name: (type_identifier) @struct_name
+  body: (field_declaration_list) @struct_body)
+"""
+
 VARIABLE_QUERY = b"""
-    (
-    declaration
-        type: (_) @type
-        declarator: [
-        (init_declarator
-            declarator: (identifier) @var_name
-            value: (_) @var_value
-        )
-        (init_declarator
-            declarator: (identifier) @var_name
-        )
-        (identifier) @var_name
-        ]
-    )
+(declaration
+  declarator: (init_declarator
+    declarator: (identifier) @var_name
+    value: (_) @var_value))
+(declaration
+  declarator: (identifier) @var_name)
 """
 
 class treesitter_matches:
@@ -51,24 +51,24 @@ class treesitter_matches:
         frame = None,
         query_field = QUERY_FIELDS["FUNCTION"]
         ):
-        query = self.craft_query(query_field) 
-
         if frame == None:
             frame = gdb.selected_frame()
     
         file = frame.find_sal().symtab.fullname()
-        lang = frame.language()
+        self.lang = frame.language()
     
         try:
-            parser = Parser(supported_langs[lang])
+            parser = Parser(supported_langs[self.lang])
         except:
             print("unsupported language")
             return
+
+        query = self.craft_query(query_field) 
     
         with open(file, "rb") as f:
             self.src = f.read()
     
-        q = Query(supported_langs[lang], query)
+        q = Query(supported_langs[self.lang], query)
         tree = parser.parse(self.src)
         root = tree.root_node
         cursor = QueryCursor(q)
@@ -82,13 +82,20 @@ class treesitter_matches:
             query += VARIABLE_QUERY
         if fields & QUERY_FIELDS["FUNCTION"]:
             query += FUNCTION_QUERY
+        if fields & QUERY_FIELDS["CLASS"]:
+            if self.lang == "c++":
+                query += CLASS_QUERY_CPP
         return query
 
     def _text(self, node):
         return self.src[node.start_byte:node.end_byte].decode("utf-8", "replace")
 
     def search(self, name):
-        caps = list(self.find_caps_by_name(name))[0]
+        found = list(self.find_caps_by_name(name))
+        if not found:
+            return ''
+        
+        caps = found[0]
         
         if "func_body" in caps:
             node = caps["func_body"][0]
@@ -118,3 +125,10 @@ class treesitter_matches:
 
                 if name_node == name:
                     yield caps
+                    continue
+
+                # c++ qualified_identifier: extract last part after ::
+                if b"::" in name_node:
+                    last = name_node.rsplit(b"::", 1)[-1]
+                    if last == name:
+                        yield caps
