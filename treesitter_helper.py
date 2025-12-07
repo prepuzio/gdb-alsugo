@@ -1,15 +1,16 @@
 import sys
 import gdb
 
-# # RELATIVE PATH this is relative
-sys.path.append("./deps/lib/python3.13/site-packages")
 import tree_sitter
 from tree_sitter import Language, Parser
-import tree_sitter_c
 from tree_sitter import Query, QueryCursor
 
+import tree_sitter_c
+import tree_sitter_cpp
+
 supported_langs = {
-        "c": Language(tree_sitter_c.language())
+        "c": Language(tree_sitter_c.language()),
+        "c++": Language(tree_sitter_cpp.language()),
         } 
 
 
