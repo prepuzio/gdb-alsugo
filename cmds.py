@@ -13,6 +13,7 @@ from .ai import *
 from .md_helper import *
 from .enums import PAYLOAD_FIELDS, QUERY_FIELDS, generate_fields
 
+
 class Frame:
     def __init__(self, frame=None):
         if frame is None:
@@ -105,10 +106,24 @@ Version = dict(
         plugin_name = "gdb-alsugo",
         version = "0.09",
         )
-cmds = dict()
-convs = dict()
-prompts = dict()
-watchers = dict()
+cmds = {}
+convs = {}
+
+class PayloadHelper:
+    def __init__(self):
+        self._mask = PAYLOAD_FIELDS["LINE"] | PAYLOAD_FIELDS["FUNCTION"] | PAYLOAD_FIELDS["BODY"] | PAYLOAD_FIELDS["LOCALS"]
+
+    def set_mask(self, mask):
+        if mask < 0:
+            errorprint("invalid mask")
+            return
+        self._mask = mask
+
+    @property
+    def mask(self):
+        return self._mask
+
+payload_helper = PayloadHelper()
 
 def errorprint(msg):
     print(msg, file=sys.stderr)
@@ -130,29 +145,69 @@ def version_cmd(args, from_tty):
 
 @gdb_register(cmds, ["payload", "json"])
 def payload_cmd(args, from_tty):
-    print(craft_payload(PAYLOAD_FIELDS["ALL"]))
+    if not args:
+        print(craft_payload(payload_helper.mask))
+
+@gdb_register(cmds, ["mask"])
+def mask_cmd(args, from_tty):
+    old = payload_helper.mask
+    if not args:
+        print("PAYLOAD:")
+        print(craft_payload(payload_helper.mask))
+        return
+    
+    m = payload_mask(args)
+    if m < 0:
+        m = payload_helper.mask
+
+    payload_helper.set_mask(m)
+    if old != m:
+        print("old mask:")
+        print_mask( old )
+
+    print("new mask:")
+    print_mask( payload_helper.mask )
+
+def print_mask(mask):
+    for key in PAYLOAD_FIELDS.keys():
+        if key in ("ALL", "NONE"):
+            continue
+        if mask & PAYLOAD_FIELDS[key]:
+            print(key)
 
 @gdb_register(cmds, ["spiega"])
 def spiega_cmd(args, from_tty):
-    payload = craft_payload(PAYLOAD_FIELDS["LINE"] | 
-                            PAYLOAD_FIELDS["FUNCTION"] |
-                            PAYLOAD_FIELDS["BODY"] |
-                            PAYLOAD_FIELDS["LOCALS"]
-                            )
+    # TODO move craft_payload to PayloadHelper
+    payload = craft_payload( payload_helper.mask )
     md().print(AiClient()
-          .query("siamo dentro gdb, descrivi la seguente funzione:" + 
-                 str(payload)))
+          .query("siamo dentro gdb, cio che sta avvenendo" + 
+                 "\n\nContext:\n" +
+                 json.dumps(payload, indent=2)))
 
 @gdb_register(cmds, ["chiedi", "ask", "addumann"])
-def _cmd(args, from_tty):
+def chiedi_cmd(args, from_tty):
     query = input("chiedi: ")
-    payload = craft_payload(PAYLOAD_FIELDS["LINE"] | 
-                            PAYLOAD_FIELDS["FUNCTION"] |
-                            PAYLOAD_FIELDS["BODY"] |
-                            PAYLOAD_FIELDS["LOCALS"]
-                            )
+    payload = craft_payload(payload_helper.mask)
     md().print(AiClient()
           .query(query + "\n\nContext:\n" + json.dumps(payload, indent=2)))
+
+
+def payload_mask(args):
+    sane = lambda arg: arg.upper().strip("-").strip("+")
+
+    mask = payload_helper.mask
+    for arg in args:
+        if not sane(arg) in PAYLOAD_FIELDS.keys():
+            errorprint(f"can't find field: {arg}")
+            return -1
+
+        if arg.startswith("-"):
+            mask &= ~PAYLOAD_FIELDS[sane(arg)]
+        else: 
+            mask |= PAYLOAD_FIELDS[sane(arg)]
+            
+    return mask
+
 
 def craft_payload(fields=PAYLOAD_FIELDS["NONE"]):
     payload = {}
@@ -168,7 +223,6 @@ def craft_payload(fields=PAYLOAD_FIELDS["NONE"]):
         payload["locals"] = f.locals
     if fields & PAYLOAD_FIELDS["FILE"]:
         payload["file"] = f.file
-        payload["lang"] = f.lang
     if fields & PAYLOAD_FIELDS["BACKTRACE"]:
         payload["backtrace"] = f.backtrace
     if fields & PAYLOAD_FIELDS["REGS"]:
