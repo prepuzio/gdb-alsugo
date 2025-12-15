@@ -14,6 +14,7 @@ QUERY_FIELDS = dict(generate_fields([
 PAYLOAD_FIELDS = dict(generate_fields([
     "LINE", 
     "BODY", 
+    "LIST", 
     "FUNCTION", 
     "LOCALS",
     "FILE",

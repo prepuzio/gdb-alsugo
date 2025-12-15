@@ -3,6 +3,7 @@ from functools import wraps
 
 import sys
 import os
+import re
 
 import json
 import random
@@ -13,6 +14,22 @@ from .ai import *
 from .md_helper import *
 from .enums import PAYLOAD_FIELDS, QUERY_FIELDS, generate_fields
 
+# chatgpt regex to strip ansi escape codes
+ANSI_ESCAPE = re.compile(
+    r"""
+    \x1B            # ESC
+    (?:             # either CSI or OSC
+        \[          # CSI
+        [0-?]*      # parameter bytes
+        [ -/]*      # intermediate bytes
+        [@-~]       # final byte
+      | \]          # OSC
+        .*?         # payload
+        (?:\x07|\x1B\\)  # BEL or ST
+    )
+    """,
+    re.VERBOSE | re.DOTALL,
+)
 
 class Frame:
     def __init__(self, frame=None):
@@ -20,6 +37,14 @@ class Frame:
             self._frame = gdb.selected_frame()
         else:
             self._frame = frame
+
+    @property
+    def list(self):
+        pc = self._frame.pc()
+        ret = gdb.execute(f"list *{pc}", to_string=True)
+        return ANSI_ESCAPE.sub("", ret)
+
+
 
     @property
     def funcname(self):
@@ -111,7 +136,7 @@ convs = {}
 
 class PayloadHelper:
     def __init__(self):
-        self._mask = PAYLOAD_FIELDS["LINE"] | PAYLOAD_FIELDS["FUNCTION"] | PAYLOAD_FIELDS["BODY"] | PAYLOAD_FIELDS["LOCALS"]
+        self._mask =  PAYLOAD_FIELDS["FUNCTION"] | PAYLOAD_FIELDS["LIST"] | PAYLOAD_FIELDS["LOCALS"]
 
     def set_mask(self, mask):
         if mask < 0:
@@ -145,8 +170,8 @@ def version_cmd(args, from_tty):
 
 @gdb_register(cmds, ["payload", "json"])
 def payload_cmd(args, from_tty):
-    if not args:
-        print(craft_payload(payload_helper.mask))
+    payload = craft_payload( payload_helper.mask )
+    print(json.dumps(payload, indent=2))
 
 @gdb_register(cmds, ["mask"])
 def mask_cmd(args, from_tty):
@@ -215,6 +240,8 @@ def craft_payload(fields=PAYLOAD_FIELDS["NONE"]):
 
     if fields & PAYLOAD_FIELDS["LINE"]:
         payload["current_line"] = f.line
+    if fields & PAYLOAD_FIELDS["LIST"]:
+        payload["list"] = f.list
     if fields & PAYLOAD_FIELDS["FUNCTION"]:
         payload["current_function"] = f.funcname
     if fields & PAYLOAD_FIELDS["BODY"]:
