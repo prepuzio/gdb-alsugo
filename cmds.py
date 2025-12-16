@@ -1,4 +1,6 @@
 import gdb
+
+import functools
 from functools import wraps
 
 import sys
@@ -30,6 +32,15 @@ ANSI_ESCAPE = re.compile(
     """,
     re.VERBOSE | re.DOTALL,
 )
+def try_return(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            errorprint(e)
+            return None
+    return wrapper
 
 class Frame:
     def __init__(self, frame=None):
@@ -38,23 +49,26 @@ class Frame:
         else:
             self._frame = frame
 
+
     @property
+    @try_return
     def list(self):
         pc = self._frame.pc()
         ret = gdb.execute(f"list *{pc}", to_string=True)
         return ANSI_ESCAPE.sub("", ret)
 
-
-
     @property
+    @try_return
     def funcname(self):
         return self._frame.function().print_name
 
     @property
+    @try_return
     def symbols(self):
         return list(self._symbols())
 
     @property
+    @try_return
     def line(self):
         sal = self._frame.find_sal()
         number = sal.line - 1
@@ -62,20 +76,24 @@ class Frame:
             return f.readlines()[number]
 
     @property
+    @try_return
     def file(self):
         return self._frame.find_sal().symtab.fullname()
 
     @property
+    @try_return
     def lang(self):
         return self._frame.language()
 
     @property
+    @try_return
     def locals(self):
         return [{ s["print_name"]: s["value"]} 
             for s in self._symbols() 
                 if s["is_variable"] == True]
 
     @property
+    @try_return
     def funcbody(self):
         return treesitter_matches(
                 frame=self._frame,
@@ -83,6 +101,7 @@ class Frame:
                 ).search(self.funcname)
 
     @property
+    @try_return
     def backtrace(self):
         bt = []
         frame = self._frame
@@ -97,6 +116,14 @@ class Frame:
         return bt
 
     @property
+    @try_return
+    def list(self):
+        pc = self._frame.pc()
+        ret = gdb.execute(f"list *{pc}", to_string=True)
+        return ANSI_ESCAPE.sub("", ret)
+
+    @property
+    @try_return
     def regs(self):
         r = {}
         try:
@@ -159,10 +186,6 @@ def gdb_register(cmds, names):
             cmds[name] = fn
         return fn
     return wrap
-
-@gdb_register(cmds, ["ping"])
-def ping_cmd(args, from_tty):
-    print("pong")
 
 @gdb_register(cmds, ["version"])
 def version_cmd(args, from_tty):
