@@ -33,7 +33,7 @@ class AiClient:
                 raise ValueError(f"please provide a valid api key")
 
     def query(self, prompt: str) -> str:
-        return self.providers[self.provider](prompt)
+        return self.providers[self.provider](prompt)["choices"][0]["message"]["content"]
 
     def guess_provider(self):
         return next((k for k, v in self.api_keys.items() if v not in ('', None)), None)

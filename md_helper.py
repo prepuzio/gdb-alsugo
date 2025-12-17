@@ -5,4 +5,4 @@ class md:
     def __init__(self):
         self._console = Console(markup=False)
     def print(self, msg):
-        self._console.print(Markdown(msg))
+        self._console.print(Markdown(str(msg)))

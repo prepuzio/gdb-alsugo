@@ -50,6 +50,7 @@ class Frame:
             self._frame = frame
 
 
+    
     @property
     @try_return
     def list(self):
@@ -234,8 +235,8 @@ def spiega_cmd(args, from_tty):
 
 @gdb_register(cmds, ["chiedi", "ask", "addumann"])
 def chiedi_cmd(args, from_tty):
+    payload = craft_payload( payload_helper.mask )
     query = input("chiedi: ")
-    payload = craft_payload(payload_helper.mask)
     md().print(AiClient()
           .query(query + "\n\nContext:\n" + json.dumps(payload, indent=2)))
 
