@@ -4,10 +4,6 @@ gdb al sugo
 ![GdB IN toMATo sAUce](./logo.png)
 
 # TODO 
-- query variable definition using treesitter [ ]
-- refactor `ai.py` [ ]
-- make propmt settable [ ]
-
-
-
-
+- [ ] `sugo chiedi` bug with tui enabled
+- [ ] fix `treesitter_helper.py` -> C++ methods and functions query. 
+                                    (a better helper is needed)
